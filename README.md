@@ -27,26 +27,35 @@ https://github.com/user-attachments/assets/e22c8bd5-7eec-4d4a-98da-b0d26253b847
 
 Choose the method that suits you best.
 
-### Option 1 — Download a Binary (No Python required)
+### Download a Binary
 
 Pre-built binaries are available for **Linux** and **Windows** on the [Releases page](https://github.com/bhuvan-raj/TerraLens/releases).
 
 **Linux:**
 ```bash
 # Download the latest binary
-curl -L https://github.com/bhuvan-raj/TerraLens/releases/latest/download/insight-tf-linux -o insight-tf
+curl -L https://github.com/bhuvan-raj/TerraLens/releases/download/v0.1.2/insight-tf-linux -o terralens
 
 # Make it executable
-chmod +x insight-tf
+chmod +x terralens
+
+# Move the executable to destination terraform project directory
+mv terralens /my-terraform-project
 
 # Run it from your Terraform project directory
 cd ~/my-terraform-project
-./insight-tf
+
+./terralens
 ```
 
 **Windows:**
 ```powershell
-# Download insight-tf-windows.exe from the Releases page, then run:
+# Download insight-tf-windows.exe from the Releases page
+curl -L https://github.com/bhuvan-raj/TerraLens/releases/download/v0.1.2/insight-tf-windows.exe
+
+# Move the nsight-tf-windows.exe to your terraform project directory
+
+# then run:
 .\insight-tf-windows.exe
 ```
 
@@ -54,22 +63,39 @@ cd ~/my-terraform-project
 
 ---
 
-### Option 2 — Install via pip (Python users)
+## Install via pip
 
-Insight-TF is published on [PyPI](https://pypi.org/project/insight-tf/):
+TerraLens is published on [PyPI](https://pypi.org/project/TerraLens/):
 
+### Create Python Virtual Environment if necessary
+```
+python -m venv venv
+source venv/bin/activate
+```
+
+### Install necessary dependency
+
+```
+pip install textual
+```
+
+### Install the Application
 ```bash
-pip install insight-tf
+pip install TerraLens
+
+or
+
+pipx install TerraLens #Global installation
 ```
 
 Then run it from your Terraform project directory:
 
 ```bash
 cd ~/my-terraform-project
-insight-tf
+terralens
 
 # Or pass the state file path explicitly
-insight-tf /path/to/terraform.tfstate
+terralens /path/to/terraform.tfstate
 ```
 
 ---
