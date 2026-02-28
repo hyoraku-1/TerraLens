@@ -1,0 +1,23 @@
+[project]
+name = "TerraLens"
+version = "0.1.0"
+description = "Terraform TUI viewer"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "Bubu" }
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/bhuvan-raj/TerraLens"
+
+[project.scripts]
+insight-tf = "insight_tf.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
