@@ -38,11 +38,20 @@ from rich.text import Text
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
+from insight_tf.app import InsightTFApp
 
 
-# ─────────────────────────────────────────────
-# App config (written by setup.py)
-# ─────────────────────────────────────────────
+def main():
+    InsightTFApp().run()
+
+
+if __name__ == "__main__":
+    main()
+
+
+# ──────────────────────
+# App config 
+# ──────────────────────
 def load_app_config() -> dict:
     config_path = Path(__file__).parent / ".insight-tf.json"
     if config_path.exists():
@@ -56,7 +65,7 @@ APP_CONFIG = load_app_config()
 
 
 # ─────────────────────────────────────────────
-# Sample / fallback state (used when no real
+# Sample statefile (used when no real
 # terraform.tfstate is found in cwd)
 # ─────────────────────────────────────────────
 SAMPLE_STATE: dict[str, Any] = {
@@ -189,9 +198,8 @@ def format_value(v: Any, indent: int = 0) -> str:
         return str(v)
 
 
-# ─────────────────────────────────────────────
 # Overview Page
-# ─────────────────────────────────────────────
+
 class StatCard(Static):
     DEFAULT_CSS = """
     StatCard {
@@ -1341,9 +1349,8 @@ for _cat, _resources in AWS_RESOURCE_CATALOG.items():
             ALL_AWS_RESOURCES.append({"type": _r["type"], "description": _r["description"], "category": _cat})
 
 
-# ─────────────────────────────────────────────
 # Provider Selection Screen
-# ─────────────────────────────────────────────
+
 def _cat_id(cat: str) -> str:
     """Convert category name to a valid Textual widget ID."""
     return "cat-" + cat.replace(" ", "_").replace("&", "and").replace("/", "_")
@@ -1451,9 +1458,7 @@ class ProviderSelectScreen(ModalScreen[str | None]):
             self.dismiss(None)
 
 
-# ─────────────────────────────────────────────
 # AWS Resource Picker Screen
-# ─────────────────────────────────────────────
 class AWSResourcePickerScreen(ModalScreen[str | None]):
     """Full searchable AWS resource catalog grouped by category."""
 
@@ -1648,10 +1653,8 @@ class AWSResourcePickerScreen(ModalScreen[str | None]):
             self.dismiss(None)
 
 
-# ─────────────────────────────────────────────
 # Resource Templates
-# ─────────────────────────────────────────────
-# Each entry: { "fields": [{"name", "label", "placeholder", "required", "default"}] }
+
 RESOURCE_TEMPLATES: dict[str, dict] = {
     "aws_s3_bucket": {
         "description": "S3 object storage bucket",
@@ -1817,9 +1820,8 @@ def _build_tf_block(rtype: str, values: dict[str, str]) -> str:
     return tmpl.format(**values)
 
 
-# ─────────────────────────────────────────────
-# Add Resource Wizard  (3-step modal)
-# ─────────────────────────────────────────────
+# Add Resource Wizard
+
 class AddResourceWizard(ModalScreen[tuple[str, str, bool] | None]):
     """
     3-step wizard:
@@ -2217,7 +2219,7 @@ class ConfirmDestroyScreen(ModalScreen[bool]):
 # Main App
 # ─────────────────────────────────────────────
 class InsightTF(App):
-    TITLE = "Insight-TF"
+    TITLE = "TerraLens"
     SUB_TITLE = "Terraform TUI Dashboard"
 
     CSS = """
