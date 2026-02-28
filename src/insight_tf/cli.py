@@ -38,7 +38,6 @@ from rich.text import Text
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
-from insight_tf.app import InsightTFApp
 
 
 def main():
@@ -2297,9 +2296,11 @@ class InsightTF(App):
         self.notify("✅ State refreshed", severity="information")
 
 
-if __name__ == "__main__":
+def main():
     import sys
-
     state_path = sys.argv[1] if len(sys.argv) > 1 else "terraform.tfstate"
-    app = InsightTF(state_path)
-    app.run()
+    InsightTF(state_path).run()
+
+
+if __name__ == "__main__":
+    main()
