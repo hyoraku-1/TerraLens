@@ -1,4 +1,4 @@
-# Insight-TF
+# TerraLens
 
 > A terminal-based Terraform dashboard built with [Textual](https://textual.textualize.io/) — manage your infrastructure without leaving the command line.
 
@@ -29,12 +29,12 @@ Choose the method that suits you best.
 
 ### Option 1 — Download a Binary (No Python required)
 
-Pre-built binaries are available for **Ubuntu (Linux)** and **Windows** on the [Releases page](https://github.com/bhuvan-raj/Insight-Q/releases).
+Pre-built binaries are available for **Linux** and **Windows** on the [Releases page](https://github.com/bhuvan-raj/TerraLens/releases).
 
-**Ubuntu / Linux:**
+**Linux:**
 ```bash
 # Download the latest binary
-curl -L https://github.com/bhuvan-raj/Insight-Q/releases/latest/download/insight-tf-linux -o insight-tf
+curl -L https://github.com/bhuvan-raj/TerraLens/releases/latest/download/insight-tf-linux -o insight-tf
 
 # Make it executable
 chmod +x insight-tf
