@@ -40,13 +40,6 @@ from rich.table import Table
 from rich import box
 
 
-def main():
-    InsightTFApp().run()
-
-
-if __name__ == "__main__":
-    main()
-
 
 # ──────────────────────
 # App config 
