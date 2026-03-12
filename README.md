@@ -33,7 +33,7 @@ Choose the method that suits you best.
 
 ### Option 1 — Download a Binary (No Python required)
 
-Pre-built binaries are available for **Ubuntu (Linux)** and **Windows** on the [Releases page](https://github.com/bhuvan-raj/Insight-Q/releases).
+Pre-built binaries are available for **Ubuntu (Linux)** and **Windows** on the [Releases page](https://github.com/bhuvan-raj/TerraLens/releases).
 
 **Ubuntu / Linux:**
 ```bash
