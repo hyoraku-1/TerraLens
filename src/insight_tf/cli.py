@@ -41,6 +41,7 @@ from .catalog import (
     _cat_id,
     _build_tf_block,
 )
+from .blueprints import BLUEPRINTS, build_blueprint_hcl
 
 
 # ─────────────────────────────────────────────
@@ -478,6 +479,7 @@ class ManagePage(Container):
         log = self.query_one("#output-log", RichLog)
         tf_dir = self.app._tf_dir
 
+        # ── shared: write file + plan/apply ──────────────────────────────
         def on_wizard_done(result: tuple[str, str, bool] | None) -> None:
             if result is None:
                 log.clear(); log.write("[dim]Add resource cancelled.[/dim]"); return
@@ -497,6 +499,7 @@ class ManagePage(Container):
             except Exception as e:
                 log.write(f"[bold red]✖ Failed to write file: {e}[/bold red]")
 
+        # ── single resource flow ──────────────────────────────────────────
         def on_resource_picked(rtype: str | None) -> None:
             if rtype is None:
                 self.app.push_screen(ProviderSelectScreen(), on_provider_selected); return
@@ -508,7 +511,16 @@ class ManagePage(Container):
             if provider == "aws":
                 self.app.push_screen(AWSResourcePickerScreen(), on_resource_picked)
 
-        self.app.push_screen(ProviderSelectScreen(), on_provider_selected)
+        # ── mode selection callback ───────────────────────────────────────
+        def on_mode_selected(mode: str | None) -> None:
+            if mode is None:
+                log.clear(); log.write("[dim]Add resource cancelled.[/dim]"); return
+            if mode == "blueprint":
+                self.app.push_screen(BlueprintPickerScreen(tf_dir), on_wizard_done)
+            elif mode == "single":
+                self.app.push_screen(ProviderSelectScreen(), on_provider_selected)
+
+        self.app.push_screen(AddModeScreen(), on_mode_selected)
 
     @work(thread=True)
     def _validate_new_resource(self, filepath: str, log: RichLog) -> None:
@@ -657,6 +669,257 @@ class ManagePage(Container):
 
 
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Add Mode Selection Screen
+# ─────────────────────────────────────────────
+class AddModeScreen(ModalScreen[str | None]):
+    """First screen after clicking ➕ Add Resource — choose Blueprint or Single."""
+
+    DEFAULT_CSS = """
+    AddModeScreen { align: center middle; }
+    #mode-container {
+        width: 64; height: auto;
+        border: tall $accent; background: $surface; padding: 0;
+    }
+    #mode-header {
+        background: $accent; color: $background;
+        padding: 0 2; height: 3;
+        content-align: left middle; text-style: bold;
+    }
+    #mode-body { padding: 2 2; }
+    #mode-subtitle { color: $text-muted; margin-bottom: 2; }
+    .mode-btn {
+        width: 1fr; height: 6;
+        margin-bottom: 1; text-align: left;
+    }
+    #mode-cancel-row { height: 3; align: right middle; margin-top: 1; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="mode-container"):
+            yield Label("➕  Add Resource", id="mode-header")
+            with Vertical(id="mode-body"):
+                yield Label("How would you like to add infrastructure?", id="mode-subtitle")
+                yield Button(
+                    "🏗️  Build from Blueprint\n[dim]Create multiple connected resources at once (VPC+EC2, Lambda+IAM, etc.)[/dim]",
+                    id="btn-mode-blueprint",
+                    classes="mode-btn",
+                    variant="primary",
+                )
+                yield Button(
+                    "🧱  Single Resource\n[dim]Add one resource from the full AWS catalog[/dim]",
+                    id="btn-mode-single",
+                    classes="mode-btn",
+                    variant="default",
+                )
+                with Horizontal(id="mode-cancel-row"):
+                    yield Button("Cancel", id="btn-mode-cancel", variant="default")
+
+    @on(Button.Pressed, "#btn-mode-blueprint")
+    def choose_blueprint(self) -> None:
+        self.dismiss("blueprint")
+
+    @on(Button.Pressed, "#btn-mode-single")
+    def choose_single(self) -> None:
+        self.dismiss("single")
+
+    @on(Button.Pressed, "#btn-mode-cancel")
+    def cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+# ─────────────────────────────────────────────
+# Blueprint Picker + Wizard Screen
+# ─────────────────────────────────────────────
+class BlueprintPickerScreen(ModalScreen[tuple[str, str, bool] | None]):
+    """Three-step screen: pick blueprint → fill fields → preview HCL."""
+
+    DEFAULT_CSS = """
+    BlueprintPickerScreen { align: center middle; }
+    #bp-container {
+        width: 92; height: 42;
+        border: tall $accent; background: $surface; padding: 0;
+    }
+    #bp-header {
+        background: $accent; color: $background;
+        padding: 0 2; height: 3;
+        content-align: left middle; text-style: bold;
+    }
+    #bp-body { padding: 1 2; height: 1fr; }
+    #bp-footer {
+        height: 4; padding: 1 2;
+        border-top: solid $panel; align: right middle;
+    }
+    #bp-footer Button { margin-left: 1; }
+    .bp-card {
+        width: 1fr; height: 7;
+        margin-bottom: 1; text-align: left;
+        background: $surface; border: solid $panel;
+    }
+    .bp-card:hover { background: $accent 15%; }
+    .bp-card.--selected { border: solid $accent; background: $accent 20%; }
+    .field-label { color: $accent; margin-top: 1; }
+    .field-input { margin-bottom: 0; width: 1fr; }
+    #bp-preview-area { height: 1fr; border: solid $panel; overflow-y: auto; padding: 1; }
+    #bp-filename-input { width: 1fr; margin-top: 1; }
+    #btn-bp-apply { display: none; }
+    #btn-bp-apply:enabled { display: block; }
+    """
+
+    def __init__(self, tf_dir: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._tf_dir = tf_dir
+        self._step = 1
+        self._selected_bp: dict | None = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="bp-container"):
+            yield Label("🏗️  Build from Blueprint  —  Step 1 of 3: Choose blueprint", id="bp-header")
+            with ScrollableContainer(id="bp-body"):
+                yield from self._compose_step1()
+            with Horizontal(id="bp-footer"):
+                yield Button("← Back",           id="btn-bp-back",  variant="default")
+                yield Button("Next →",            id="btn-bp-next",  variant="primary")
+                yield Button("🚀  Write & Apply", id="btn-bp-apply", variant="warning", disabled=True)
+
+    def _compose_step1(self) -> ComposeResult:
+        for bp in BLUEPRINTS:
+            resources_str = "  •  ".join(bp["resources"])
+            yield Button(
+                f"[bold]{bp['icon']}  {bp['name']}[/bold]\n"
+                f"[dim]{bp['description']}[/dim]\n"
+                f"[dim cyan]{resources_str}[/dim cyan]",
+                id=f"bp-{bp['id']}",
+                classes="bp-card",
+                variant="default",
+            )
+
+    def _compose_step2(self) -> ComposeResult:
+        bp = self._selected_bp
+        yield Label(
+            f"[bold cyan]{bp['icon']}  {bp['name']}[/bold cyan]  —  {bp['description']}",
+            classes="field-label",
+        )
+        yield Label("", classes="field-label")
+        for field in bp["fields"]:
+            req = "[bold red]*[/bold red] " if field["required"] else ""
+            yield Label(f"{req}{field['label']}", classes="field-label")
+            yield Input(
+                value=field["default"],
+                placeholder=field["placeholder"],
+                id=f"bpfield-{field['name']}",
+                classes="field-input",
+            )
+
+    def _compose_step3(self, hcl: str, filename: str) -> ComposeResult:
+        yield Label("📄  Generated Terraform HCL (all resources connected):", classes="field-label")
+        yield TextArea(hcl, id="bp-preview-area", read_only=True, language="css")
+        yield Label("💾  Save to filename:", classes="field-label")
+        yield Input(value=filename, id="bp-filename-input")
+
+    def _go_to_step(self, step: int, hcl: str = "", filename: str = "") -> None:
+        self._step = step
+        header = self.query_one("#bp-header", Label)
+        body = self.query_one("#bp-body", ScrollableContainer)
+        body.remove_children()
+
+        if step == 1:
+            header.update("🏗️  Build from Blueprint  —  Step 1 of 3: Choose blueprint")
+            body.mount(*list(self._compose_step1()))
+        elif step == 2:
+            header.update(f"🏗️  {self._selected_bp['name']}  —  Step 2 of 3: Configure")
+            body.mount(*list(self._compose_step2()))
+        elif step == 3:
+            header.update(f"🏗️  {self._selected_bp['name']}  —  Step 3 of 3: Preview & Save")
+            body.mount(*list(self._compose_step3(hcl, filename)))
+
+        next_btn  = self.query_one("#btn-bp-next",  Button)
+        apply_btn = self.query_one("#btn-bp-apply", Button)
+        if step == 3:
+            next_btn.label = "💾  Write File"; next_btn.variant = "success"; apply_btn.disabled = False
+        else:
+            next_btn.label = "Next →"; next_btn.variant = "primary"; apply_btn.disabled = True
+
+    @on(Button.Pressed)
+    def on_button(self, event: Button.Pressed) -> None:
+        btn_id = event.button.id or ""
+        if btn_id.startswith("bp-") and btn_id not in ("btn-bp-back", "btn-bp-next", "btn-bp-apply"):
+            bp_id = btn_id[3:]
+            bp = next((b for b in BLUEPRINTS if b["id"] == bp_id), None)
+            if not bp:
+                return
+            for b in BLUEPRINTS:
+                try:
+                    self.query_one(f"#bp-{b['id']}", Button).remove_class("--selected")
+                except Exception:
+                    pass
+            event.button.add_class("--selected")
+            self._selected_bp = bp
+            event.stop()
+
+    @on(Button.Pressed, "#btn-bp-next")
+    def next_step(self) -> None:
+        if self._step == 1:
+            if not self._selected_bp:
+                self.notify("Please select a blueprint first.", severity="warning"); return
+            self._go_to_step(2)
+
+        elif self._step == 2:
+            bp = self._selected_bp
+            values: dict[str, str] = {}
+            missing = []
+            for field in bp["fields"]:
+                try:
+                    val = self.query_one(f"#bpfield-{field['name']}", Input).value.strip()
+                except Exception:
+                    val = field["default"]
+                if field["required"] and not val:
+                    missing.append(field["label"])
+                values[field["name"]] = val or field["default"]
+            if missing:
+                self.notify(f"Required: {', '.join(missing)}", severity="error"); return
+            try:
+                hcl = build_blueprint_hcl(bp["id"], values)
+            except Exception as e:
+                self.notify(f"Error generating HCL: {e}", severity="error"); return
+            filename = f"blueprint_{bp['id']}.tf"
+            self._go_to_step(3, hcl, filename)
+
+        elif self._step == 3:
+            self._write_and_dismiss(apply=False)
+
+    @on(Button.Pressed, "#btn-bp-apply")
+    def write_and_apply(self) -> None:
+        if self._step == 3:
+            self._write_and_dismiss(apply=True)
+
+    def _write_and_dismiss(self, apply: bool) -> None:
+        try:
+            filename = self.query_one("#bp-filename-input", Input).value.strip() or "blueprint.tf"
+            if not filename.endswith(".tf"):
+                filename += ".tf"
+            filepath = Path(self._tf_dir) / filename
+            hcl = self.query_one("#bp-preview-area", TextArea).text
+            self.dismiss((str(filepath), hcl, apply))
+        except Exception as e:
+            self.notify(f"Error: {e}", severity="error")
+
+    @on(Button.Pressed, "#btn-bp-back")
+    def go_back(self) -> None:
+        if self._step > 1:
+            self._go_to_step(self._step - 1)
+        else:
+            self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
 # Provider Selection Screen
 # ─────────────────────────────────────────────
 class ProviderSelectScreen(ModalScreen[str | None]):
